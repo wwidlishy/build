@@ -35,7 +35,7 @@ def get_modules():
 def get_file_in_module(module):
     files = []
     for entry in os.listdir(f"modules/{module}"):
-        if os.path.isfile(f"modules/{module}/{entry}") and entry.endswith(g.COMPILE_DATA["in"].strip()):
+        if os.path.isfile(f"modules/{module}/{entry}") and [entry.endswith(i.strip()) for i in g.COMPILE_DATA["in"]].count(True) >= 1:
             files.append(entry)
         
         # TODO add folders
@@ -53,7 +53,8 @@ def build_file(file):
         print(f"building: {file}")
 
         module = file[:file.index('/')]
-        outfile = file.removesuffix(g.COMPILE_DATA['in'])
+        outfile = file
+
         outfile = outfile.replace('/', ' ').replace('\\', ' ')
 
         out = f"build/m_{module} {outfile}.o"
@@ -126,19 +127,13 @@ for index, instruction in enumerate(g.FILE):
         continue
 
     if len(instruction) <= 1:
-        ERR(f"buildfile:{line}: directive expects >=1 arguments, got {len(instruction) - 1}.")
+        ERR(f"buildfile:{line}: directive expects ==1 arguments, got {len(instruction) - 1}.")
 
     if instruction[0] == "?cc":
-        if len(instruction) != 2:
-            ERR(f"buildfile:{line}: directive expects ==1 arguments, got {len(instruction) - 1}.")
-
-        g.COMPILE_DATA["cc"] = instruction[1]
-
-    elif instruction[0] == "?ld":
         if len(instruction) < 2:
-            ERR(f"buildfile:{line}: directive expects >= 2 arguments, got {len(instruction) - 1}.")
+            ERR(f"buildfile:{line}: directive expects >=1 arguments, got {len(instruction) - 1}.")
 
-        linker, do = instruction[1], " ".join(instruction[2:])
+        do = " ".join(instruction[1:])
         prev_do = str(do)
 
         while "$" in do.replace("$I", "").replace("$O", ""):
@@ -150,13 +145,48 @@ for index, instruction in enumerate(g.FILE):
 
             prev_do = str(do)
 
-        g.COMPILE_DATA["ld"] = [linker, do]
+        g.COMPILE_DATA["cc"] = do
+
+    elif instruction[0] == "?ld":
+        if len(instruction) < 2:
+            ERR(f"buildfile:{line}: directive expects >= 1 arguments, got {len(instruction) - 1}.")
+
+        do = " ".join(instruction[1:])
+        prev_do = str(do)
+
+        while "$" in do.replace("$I", "").replace("$O", ""):
+            for m in g.COMPILE_DATA["macros"].keys():
+                do = do.replace(f"${m}", g.COMPILE_DATA["macros"][m]['macro'])
+            
+            if "$" in do.replace("$I", "").replace("$O", "") and prev_do == do:
+                ERR(f"buildfile:{line}: linker config contains an undefined or recursive macro.")
+
+            prev_do = str(do)
+
+        do = do.split()
+
+        if len(do) < 2:
+            ERR(f"buildfile:{line}: directive expects >= 2 arguments, got {len(instruction) - 1}.")
+
+        g.COMPILE_DATA["ld"] = [do[0], " ".join(do[1:])]
 
     elif instruction[0] == "?in":
-        if len(instruction) != 2:
-            ERR(f"buildfile:{line}: directive expects ==1 arguments, got {len(instruction) - 1}.")
+        if len(instruction) < 2:
+            ERR(f"buildfile:{line}: directive expects >=1 arguments, got {len(instruction) - 1}.")
 
-        g.COMPILE_DATA["in"] = instruction[1]
+        do = " ".join(instruction[1:])
+        prev_do = str(do)
+
+        while "$" in do.replace("$I", "").replace("$O", ""):
+            for m in g.COMPILE_DATA["macros"].keys():
+                do = do.replace(f"${m}", g.COMPILE_DATA["macros"][m]['macro'])
+            
+            if "$" in do.replace("$I", "").replace("$O", "") and prev_do == do:
+                ERR(f"buildfile:{line}: linker config contains an undefined or recursive macro.")
+
+            prev_do = str(do)
+
+        g.COMPILE_DATA["in"] = do.split()
 
     elif instruction[0] == "?out":
         if len(instruction) != 2:
